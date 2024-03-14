@@ -6,7 +6,6 @@ import cv2
 import face_recognition
 import numpy as np
 import os
-import io
 import chromadb
 
 class Session(BaseModel):
@@ -41,7 +40,7 @@ app = FastAPI()
 app.cache = LRU(1024)
 
 @app.post("/sessions")
-async def session_image(session_id: str, user_id: int, timestamp: int, file: bytes = File(...)):
+async def post_session_image(session_id: str, user_id: int, timestamp: int, file: bytes = File(...)):
     if session_id not in app.cache:
         # Fetch baseline encoding from database
         baseline_embedding = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)["embeddings"]
@@ -62,7 +61,7 @@ async def session_image(session_id: str, user_id: int, timestamp: int, file: byt
     return 'Image received'
 
 @app.get("/sessions/{session_id}")
-async def session_results(session_id: str):
+async def get_session_results(session_id: str):
     if session_id in app.cache:
         # Return the minimum distance from the session
         return SessionResult(
