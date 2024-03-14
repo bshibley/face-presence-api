@@ -233,7 +233,7 @@ def test_end_to_end_session():
     assert response.json() == "Image successfully added to the database"
 
     # open video and post every 10th frame to session
-    cap = cv2.VideoCapture("test_assets/test-10.mp4")
+    cap = cv2.VideoCapture("test_assets/test-2.mp4")
     frame_count = 0
     while cap.isOpened():
         ret, frame = cap.read()
@@ -257,8 +257,8 @@ def test_end_to_end_session():
         "session_id": "2",
         "user_id": 110,
         "pct_present": 1.0,
-        "avg_distance": 0.0,
-        "std_distance": 0.0
+        "avg_distance": 0.2381553674843698,
+        "std_distance": 0.017191096220264004
     }
 
     # delete session
