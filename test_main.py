@@ -1,6 +1,9 @@
 from fastapi.testclient import TestClient
+import io
+import cv2
+import os
 
-from .main import app
+from main import app
 
 client = TestClient(app)
 
@@ -8,20 +11,29 @@ def test_read_main():
     response = client.get("/")
     assert response.status_code == 200
 
-def test_create_user():
-    # open test image as bytes
+def test_put_user():
+
     image_bytes = None
-    with open("test_assets.jpg", "rb") as image_file:
+    with open("test_assets/test-4.jpg", "rb") as image_file:
         image_bytes = image_file.read()
 
-    response = client.put("/users/104", json={"file": image_file})
+    file_name = "test-4.jpg"
+    file_content = io.BytesIO(image_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "image/jpeg"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    # convert image_bytes to raw byte array  
+    response = client.put("/users/104", files=files)
     assert response.status_code == 200, response.text
     assert response.json() == "Image successfully added to the database"
 
+def test_get_user():
+
     response = client.get("/users/104")
     assert response.status_code == 200, response.text
-    data = response.json()
-    assert data["embedding"] == [
+    assert response.json() == [
             [
                 -0.18304648995399475,
                 0.12221451848745346,
@@ -153,3 +165,108 @@ def test_create_user():
                 -0.020430458709597588
             ]
         ]
+
+def test_post_session():
+    image_bytes = None
+    with open("test_assets/test-4.jpg", "rb") as image_file:
+        image_bytes = image_file.read()
+
+    file_name = "test-4.jpg"
+    file_content = io.BytesIO(image_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "image/jpeg"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    response = client.post("/sessions?session_id=1&user_id=104&timestamp=1", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == "Image received"
+
+def test_get_session():
+
+    response = client.get("/sessions/1")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "session_id": "1",
+        "user_id": 104,
+        "pct_present": 1.0,
+        "avg_distance": 0.0,
+        "std_distance": 0.0
+    }
+
+def test_delete_session():
+
+    response = client.delete("/sessions/1")
+    assert response.status_code == 200, response.text
+    assert response.json() == "Session deleted"
+
+    response = client.get("/sessions/1")
+    assert response.status_code == 200, response.text
+    assert response.json() == "Session not found"
+
+def test_delete_user():
+    
+    response = client.delete("/users/104")
+    assert response.status_code == 200, response.text
+    assert response.json() == "User successfully deleted"
+
+    response = client.get("/users/104")
+    assert response.status_code == 200, response.text
+    assert response.json() == "User not found"
+
+def test_end_to_end_session():
+
+    image_bytes = None
+    with open("test_assets/test-10.jpg", "rb") as image_file:
+        image_bytes = image_file.read()
+
+    file_name = "test-10.jpg"
+    file_content = io.BytesIO(image_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "image/jpeg"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    # convert image_bytes to raw byte array  
+    response = client.put("/users/110", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == "Image successfully added to the database"
+
+    # open video and post every 10th frame to session
+    cap = cv2.VideoCapture("test_assets/test-10.mp4")
+    frame_count = 0
+    while cap.isOpened():
+        ret, frame = cap.read()
+        if not ret:
+            break
+        frame_count += 1
+        if frame_count % 10 == 0:
+            _, buffer = cv2.imencode('.jpg', frame)
+            file_content = io.BytesIO(buffer)
+            file_content_type = "text/plain"
+            file_headers = {"Content-Type": "image/jpeg"}
+            files = {"file": ("test-10.jpg", file_content, file_content_type, file_headers)}
+            response = client.post(f"/sessions?session_id=2&user_id=110&timestamp={frame_count}", files=files)
+            assert response.status_code == 200, response.text
+            assert response.json() == "Image received"
+    
+    # get session
+    response = client.get("/sessions/2")
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "session_id": "2",
+        "user_id": 110,
+        "pct_present": 1.0,
+        "avg_distance": 0.0,
+        "std_distance": 0.0
+    }
+
+    # delete session
+    response = client.delete("/sessions/2")
+    assert response.status_code == 200, response.text
+    assert response.json() == "Session deleted"
+
+    # delete user
+    response = client.delete("/users/110")
+    assert response.status_code == 200, response.text
+    assert response.json() == "User successfully deleted"
