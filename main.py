@@ -11,7 +11,7 @@ import chromadb
 class Session(BaseModel):
     user_id: int
     distances: dict[int, float]
-    baseline_embedding: np.ndarray
+    baseline_embedding: list[list[float]]
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
     )
@@ -45,7 +45,7 @@ async def post_session_image(session_id: str, user_id: int, timestamp: int, file
         # Fetch baseline encoding from database
         baseline_embedding = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)["embeddings"]
         # Add new session to cache
-        app.cache[session_id] = Session(user_id=user_id, distances={}, baseline_enmbedding=baseline_embedding)
+        app.cache[session_id] = Session(user_id=user_id, distances={}, baseline_embedding=baseline_embedding)
     # Ensure user ID matches the session's user ID
     if user_id != app.cache[session_id].user_id:
         return 'User ID does not match session ID'
@@ -85,8 +85,10 @@ async def delete_session(session_id: str):
 @app.get("/users/{user_id}")
 async def get_user_embedding(user_id: int):
     # Fetch user's face encoding from database
-    user_embedding = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)["embeddings"]
-    return user_embedding
+    db_result = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)
+    if len(db_result["ids"]) == 0:
+        return 'User not found'
+    return db_result["embeddings"]
 
 @app.put("/users/{user_id}")
 async def set_user_image(user_id: int, file: bytes = File(...)):
