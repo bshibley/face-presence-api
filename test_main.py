@@ -11,7 +11,7 @@ def test_read_main():
     response = client.get("/")
     assert response.status_code == 200
 
-def test_put_user():
+def test_put_user_104():
 
     image_bytes = None
     with open("test_assets/test-4.jpg", "rb") as image_file:
@@ -27,7 +27,25 @@ def test_put_user():
     # convert image_bytes to raw byte array  
     response = client.put("/users/104", files=files)
     assert response.status_code == 200, response.text
-    assert response.json() == "Image successfully added to the database"
+    assert response.json() == "User image embedding successfully added to the database"
+
+def test_put_user_110():
+
+    image_bytes = None
+    with open("test_assets/test-10.jpg", "rb") as image_file:
+        image_bytes = image_file.read()
+
+    file_name = "test-10.jpg"
+    file_content = io.BytesIO(image_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "image/jpeg"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    # convert image_bytes to raw byte array  
+    response = client.put("/users/110", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == "User image embedding successfully added to the database"
 
 def test_get_user():
 
@@ -194,6 +212,83 @@ def test_get_session():
         "std_distance": 0.0
     }
 
+def test_user_image_search():
+    image_bytes = None
+    with open("test_assets/test-4.jpg", "rb") as image_file:
+        image_bytes = image_file.read()
+
+    file_name = "test-4.jpg"
+    file_content = io.BytesIO(image_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "image/jpeg"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    response = client.post("/users/search", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == {"104": 0}
+
+def test_calc_user_image_distance():
+    image_bytes = None
+    with open("test_assets/test-4.jpg", "rb") as image_file:
+        image_bytes = image_file.read()
+
+    file_name = "test-4.jpg"
+    file_content = io.BytesIO(image_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "image/jpeg"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    response = client.post("/users/104/image-distance", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == 0
+
+def test_calc_user_video_distance_match():
+    video_bytes = None
+    with open("test_assets/test-2.mp4", "rb") as video_file:
+        video_bytes = video_file.read()
+
+    file_name = "test-2.mp4"
+    file_content = io.BytesIO(video_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "video/mp4"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    response = client.post("/users/110/video-distance", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "session_id": None,
+        "user_id": 110,
+        "pct_present": 1,
+        "avg_distance": 0.24149606372325366,
+        "std_distance": 0.01716918685046264
+    }
+
+def test_calc_user_video_distance_mismatch():
+    video_bytes = None
+    with open("test_assets/test-2.mp4", "rb") as video_file:
+        video_bytes = video_file.read()
+
+    file_name = "test-2.mp4"
+    file_content = io.BytesIO(video_bytes)
+    file_content_type = "text/plain"
+    file_headers = {"Content-Type": "video/mp4"}
+
+    files = {"file": (file_name, file_content, file_content_type, file_headers)}
+
+    response = client.post("/users/104/video-distance", files=files)
+    assert response.status_code == 200, response.text
+    assert response.json() == {
+        "session_id": None,
+        "user_id": 104,
+        "pct_present": 0,
+        "avg_distance": 0.3633252915001629,
+        "std_distance": 0.009113287146069234
+    }
+
+
 def test_delete_session():
 
     response = client.delete("/sessions/1")
@@ -204,7 +299,7 @@ def test_delete_session():
     assert response.status_code == 200, response.text
     assert response.json() == "Session not found"
 
-def test_delete_user():
+def test_delete_user_104():
     
     response = client.delete("/users/104")
     assert response.status_code == 200, response.text
@@ -230,7 +325,7 @@ def test_end_to_end_session():
     # convert image_bytes to raw byte array  
     response = client.put("/users/110", files=files)
     assert response.status_code == 200, response.text
-    assert response.json() == "Image successfully added to the database"
+    assert response.json() == "User image embedding successfully added to the database"
 
     # open video and post every 10th frame to session
     cap = cv2.VideoCapture("test_assets/test-2.mp4")
