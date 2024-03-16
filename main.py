@@ -7,17 +7,18 @@ import face_recognition
 import numpy as np
 import os
 import chromadb
+import imageio.v3 as iio
 
 class Session(BaseModel):
     user_id: int
     distances: dict[int, float]
-    baseline_embedding: list[list[float]]
+    baseline_embedding: list[float]
     model_config = ConfigDict(
         arbitrary_types_allowed=True,
     )
 
 class SessionResult(BaseModel):
-    session_id: str
+    session_id: str | None
     user_id: int
     pct_present: float
     avg_distance: float
@@ -41,9 +42,11 @@ app.cache = LRU(1024)
 
 @app.post("/sessions")
 async def post_session_image(session_id: str, user_id: int, timestamp: int, file: bytes = File(...)):
+    if session_id is None:
+        return 'Session ID is required'
     if session_id not in app.cache:
         # Fetch baseline encoding from database
-        baseline_embedding = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)["embeddings"]
+        baseline_embedding = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)["embeddings"][0]
         # Add new session to cache
         app.cache[session_id] = Session(user_id=user_id, distances={}, baseline_embedding=baseline_embedding)
     # Ensure user ID matches the session's user ID
@@ -55,7 +58,7 @@ async def post_session_image(session_id: str, user_id: int, timestamp: int, file
     # Save the distance of the nearest face in the uploaded image
     min_distance = 1
     for face_embedding in session_face_embeddings:
-        distance = np.linalg.norm(np.array(app.cache[session_id].baseline_embedding) - face_embedding, axis=1)/2
+        distance = np.linalg.norm(np.array([app.cache[session_id].baseline_embedding]) - face_embedding, axis=1)/2
         min_distance = min(min_distance, distance)
     app.cache[session_id].distances[timestamp] = min_distance
     return 'Image received'
@@ -90,6 +93,51 @@ async def get_user_embedding(user_id: int):
         return 'User not found'
     return db_result["embeddings"]
 
+@app.post("/users/search")
+async def search_users_by_image_similarity(file: bytes = File(...), n_results: int = 1):
+    # Convert file bytes to RGB numpy array
+    img_array = cv2.imdecode(np.frombuffer(file, dtype=np.uint8), cv2.IMREAD_COLOR)
+    face_embedding = face_recognition.face_encodings(img_array)[0]
+    db_result = chroma_collection.query(face_embedding.tolist(), n_results=n_results, 
+                include=['distances'],)
+    if len(db_result["ids"]) == 0:
+        return 'User not found'
+    return dict(zip(db_result["ids"][0], db_result["distances"][0]))
+
+@app.post("/users/{user_id}/image-distance")
+async def calculate_user_image_distance(user_id: int, file: bytes = File(...)):
+    # Fetch user's face encoding from database
+    db_result = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)
+    if len(db_result["ids"]) == 0:
+        return 'User not found'
+    # Convert file bytes to RGB numpy array
+    img_array = cv2.imdecode(np.frombuffer(file, dtype=np.uint8), cv2.IMREAD_COLOR)
+    face_embedding = face_recognition.face_encodings(img_array)[0]
+    return float(np.linalg.norm(np.array(db_result["embeddings"]) - face_embedding, axis=1)/2)
+
+@app.post("/users/{user_id}/video-distance")
+async def calculate_user_video_distance(user_id: int, file: bytes = File(...)):
+    # Fetch user's face encoding from database
+    db_result = chroma_collection.get(ids=[str(user_id)],include=['embeddings'],)
+    if len(db_result["ids"]) == 0:
+        return 'User not found'
+    # Convert video bytes to np stack
+    frames = np.stack(iio.imread(file, index=None, format_hint=".mp4"))
+    distances = []
+    frame_count = 0
+    for frame in frames:
+        frame_count += 1
+        if frame_count % 10 == 0:
+            face_embedding = face_recognition.face_encodings(frame)[0]
+            distances.append(np.linalg.norm(np.array([db_result["embeddings"][0]]) - face_embedding, axis=1)/2)
+    return SessionResult(
+            session_id=None,
+            user_id=user_id,
+            pct_present=len([d for d in distances if d <= id_threshold])/len(distances),
+            avg_distance=np.mean(distances),
+            std_distance=np.std(distances)
+        )
+
 @app.put("/users/{user_id}")
 async def set_user_image(user_id: int, file: bytes = File(...)):
     # Convert file bytes to RGB numpy array
@@ -100,7 +148,7 @@ async def set_user_image(user_id: int, file: bytes = File(...)):
         id_face_embedding = id_face_embeddings[0].tolist()
         # Insert the user's face encoding into the database
         chroma_collection.add(ids=[str(user_id)], embeddings=[id_face_embedding])
-        return 'Image successfully added to the database'
+        return 'User image embedding successfully added to the database'
     elif len(id_face_embeddings) == 0:
         return 'No face found in the photo'
     else:
