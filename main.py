@@ -58,7 +58,7 @@ async def post_session_image(session_id: str, user_id: int, timestamp: int, file
     # Save the distance of the nearest face in the uploaded image
     min_distance = 1
     for face_embedding in session_face_embeddings:
-        distance = np.linalg.norm(np.array([app.cache[session_id].baseline_embedding]) - face_embedding, axis=1)/2
+        distance = np.linalg.norm(np.array([app.cache[session_id].baseline_embedding]) - face_embedding, axis=1).item()/2
         min_distance = min(min_distance, distance)
     app.cache[session_id].distances[timestamp] = min_distance
     return 'Image received'
@@ -113,7 +113,7 @@ async def calculate_user_image_distance(user_id: int, file: bytes = File(...)):
     # Convert file bytes to RGB numpy array
     img_array = cv2.imdecode(np.frombuffer(file, dtype=np.uint8), cv2.IMREAD_COLOR)
     face_embedding = face_recognition.face_encodings(img_array)[0]
-    return float(np.linalg.norm(np.array(db_result["embeddings"]) - face_embedding, axis=1)/2)
+    return np.linalg.norm(np.array([db_result["embeddings"][0]]) - face_embedding, axis=1).item()/2
 
 @app.post("/users/{user_id}/video-distance")
 async def calculate_user_video_distance(user_id: int, file: bytes = File(...)):
@@ -122,14 +122,14 @@ async def calculate_user_video_distance(user_id: int, file: bytes = File(...)):
     if len(db_result["ids"]) == 0:
         return 'User not found'
     # Convert video bytes to np stack
-    frames = np.stack(iio.imread(file, index=None, format_hint=".mp4"))
+    frames = np.stack(iio.imread(file, index=None, extension=".mp4"))
     distances = []
     frame_count = 0
     for frame in frames:
         frame_count += 1
         if frame_count % 10 == 0:
             face_embedding = face_recognition.face_encodings(frame)[0]
-            distances.append(np.linalg.norm(np.array([db_result["embeddings"][0]]) - face_embedding, axis=1)/2)
+            distances.append(np.linalg.norm(np.array([db_result["embeddings"][0]]) - face_embedding, axis=1).item()/2)
     return SessionResult(
             session_id=None,
             user_id=user_id,
